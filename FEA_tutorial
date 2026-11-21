@@ -1,0 +1,72 @@
+VOLUTE PROJECT – SESSION NOTES (2026-11-20)
+
+=== PART 1: CFX (volute-only flow) ===
+- Plan: volute-only run, impeller replaced by an inlet BC with swirl
+- Inlet BC: Mass Flow Rate + Cylindrical Components (Axial 0, Radial Vr, Theta Vu)
+    Vr = Q / (pi*D2*b2)
+    sigma (Wiesner) = 1 - sqrt(sin b2)/Z^0.7
+    Vu = sigma*U2 - Vr/tan(b2)
+    Theta sign: positive about +Z (CCW seen from +Z) - verify with streamlines
+    Turbulence: 5-10% intensity
+- Outlet BC: Average Static Pressure, 0 Pa; extend discharge 3-5 D
+- Domain: Water, 1 atm ref, Isothermal/None, SST k-omega, stationary
+- Solver: High Resolution, Auto timescale, RMS 1e-5, conservation 0.01
+- PROBLEM FOUND: mesh was the SOLID CASING, not the fluid
+  TODO: SpaceClaim > Prepare > Volume Extract (cap inlet/outlet),
+        split at D2 for inlet band, add outlet extension,
+        Named Selections (inlet/outlet/wall), inflation layers, re-mesh
+
+=== PART 2: BOLT LOAD HAND CALC ===
+- F_total = P x A_seal (area inside seal line, not bolt circle)
+- Per bolt = P x A_seal / 23
+- FEA reactions: 164 kN (front) + 133 kN (back) -> don't add them
+  (through-bolts carry the larger side): ~7.1 kN avg/bolt
+- Assumed peak bolt ~2x avg = ~14 kN (design), ~21 kN at 1.5x hydro test
+- Geometry looks like inches: 25.4 mm grip, ~13.5 mm holes -> 1/2" bolts
+- 1/2" Grade 5: proof ~54 kN, 75% preload ~40 kN (~75 ft-lb dry)
+- Grade 8 / 10.9 not needed; M10/M12 8.8 or 1/2" Gr5 OK
+- Use hardened washers, star-pattern tightening
+
+=== PART 3: ANSYS MECHANICAL SETUP ===
+Bodies: Volute(ModHoles) + MirrorVolute (split volute)
+1. Contact (split face): Bonded -> Frictional, mu = 0.15,
+   Interface Treatment = Adjust to Touch
+2. Beams (bolts): Connections > Beam, Body-Body
+   - Radius 5.2e-3 m (M12) / 5.4e-3 (1/2")
+   - Ref & Mobile = hole edge on each OUTER flange face (not mating face)
+   - Behavior Deformable, Pinball 0.01 m
+   - Check: Beam Length = 0.0254 m (grip)
+   - Edge select = Ctrl+E, face = Ctrl+F
+3. Named Selections (Worksheet): Edge, Size = hole circumference,
+   Location Z range: 1.2725-1.2727 and 1.2471-1.2473 (23 edges each)
+4. Automation > Object Generator -> 23 beams; deleted template
+5. Bolt Pretension: Scoping Method = Beam Connection
+   - Step 1: Load 40000 N (considering 15 kN - see notes)
+   - Step 2: Lock
+   - Scripting failed (API: Location expects ISelectionInfo) ->
+     done manually: Duplicate + change Beam dropdown x23
+6. Analysis Settings: 2 steps, Large Deflection On,
+   Weak Springs -> set to Program Controlled now support is fixed
+7. Pressure + Pressure_Backside: Tabular, step 1 = 0, step 2 = 500000 Pa
+   (uniform 500 kPa = conservative envelope for 400 kPa max)
+8. Fixed Support: discharge flange end face, BOTH halves (2 faces)
+   (was wrongly on 2 edges at suction eye)
+   Optional: add mounting foot FACES (not edges)
+9. Mesh: beams don't show in mesh (normal); sizing ~3 mm at holes/flange
+
+=== RESULTS SO FAR ===
+- Max von Mises ~764 MPa at bolt holes, but SAME in step 1 (no pressure)
+  -> artifact of preload on a ring of edge nodes, not real yielding
+- Avg stress ~17 MPa, bulk < 85 MPa
+
+=== TODO / NEXT ===
+- Re-solve with proper Fixed Support; check warning timestamp
+- Weak Springs -> Program Controlled, confirm clean solve
+- Decide preload (15 kN if that's the torque spec, ~28 ft-lb)
+  -> check Contact Tool Status for Near/Far (flange opening)
+- Insert Bolt Tool -> max working load vs proof
+- Set stress legend max = material yield to see real hotspots
+- Pressure-only run (suppress pretensions, keep beams) to check walls
+- Optional: imprint washer faces (~24 mm OD) for cleaner hole stress
+- Optional: hydro test case at 600 kPa (1.5 x 400)
+- Fix CFX fluid mesh and run flow case
